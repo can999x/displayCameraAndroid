@@ -7,6 +7,8 @@ import android.util.DisplayMetrics;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.View;
+import android.widget.ImageButton;
 
 import java.io.IOException;
 
@@ -16,6 +18,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
 
     private Camera cameraHardware;
     private SurfaceView cameraSurfaceView;
+    private ImageButton flipImageButton;
     private SurfaceHolder surfaceHolder;
     private int cameraId =0;        //nanti untuk cek depan atau belakang       //checking front camera or back camera
     private boolean isPreviewRunning=false;     //cek, apakah kamera sudah pernah di nyalakan //check camera that was ever used
@@ -28,11 +31,64 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         setContentView(R.layout.activity_camera);
         initView();
         initData();
+        flipButtonClicked();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        releaseCamera();
+    }
+
+    private void flipButtonClicked()
+    {
+        flipImageButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                switchCamera();
+            }
+        });
+    }
+
+    private void switchCamera()
+    {
+        releaseCamera();
+        cameraId = (cameraId + 1) % cameraHardware.getNumberOfCameras();
+        cameraHardware = getCamera(cameraId);
+        if (surfaceHolder != null) {
+            startPreviewCamera(cameraHardware, surfaceHolder);
+        }
+        setFrontorBackCameraView();
+    }
+
+    private void setFrontorBackCameraView()
+    {
+        if(cameraId == 1)
+        {
+            //kalau sudah di depan
+            //if camera = front
+            flipImageButton.setImageResource(R.drawable.ic_flip_to_back);
+        }else
+        {
+            //kalau sudah di belakang
+            //if camera = back
+            flipImageButton.setImageResource(R.drawable.ic_flip_to_front);
+        }
+    }
+
+    private void releaseCamera() {
+        if (cameraHardware != null) {
+            cameraHardware.setPreviewCallback(null);
+            cameraHardware.stopPreview();
+            cameraHardware.release();
+            cameraHardware = null;
+        }
     }
 
     private void initView()
     {
         cameraSurfaceView = (SurfaceView) findViewById(R.id.camera_surface_view);
+        flipImageButton = (ImageButton) findViewById(R.id.flip_image_button);
         surfaceHolder = cameraSurfaceView.getHolder();
         if (cameraHardware== null) {
             cameraHardware = getCamera(cameraId);
@@ -59,7 +115,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         try{
             //kamera siap dipakai
             //camera ready to be used
-            camera = Camera.open();
+            camera = Camera.open(id);           //1 == depan, 0 == belakang              //1 == front, 0 == back
         }catch (Exception e)
         {}
         return camera;
@@ -76,6 +132,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
 
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
+        releaseCamera();
     }
 
     private void startPreviewCamera(Camera cameraHardware, SurfaceHolder holder)
