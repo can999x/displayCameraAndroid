@@ -1,5 +1,6 @@
 package com.android.archy.kameratesting;
 
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.hardware.Camera;
 import android.os.Bundle;
@@ -9,6 +10,9 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
+import android.widget.Toast;
 
 import java.io.IOException;
 
@@ -20,6 +24,11 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
     private SurfaceView cameraSurfaceView;
     private ImageButton flipImageButton;
     private ImageButton flashLightButton;
+    private ImageButton backButton;
+    private ImageButton cropButton;
+    private View topForScallingView;
+    private View bottomForScallingView;
+    private LinearLayout bottomMenuButtonLayout;
 
     private SurfaceHolder surfaceHolder;
     private int cameraId =0;        //nanti untuk cek depan atau belakang       //checking front camera or back camera
@@ -27,6 +36,8 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
     private int heightCamera;
     private int widthCamera;
     private int flashNumber = 0 ;           //0 = flash off, 1 = flash on, 2 = auto flash
+    private int cropValidation =0;          //0 = dont get crop yet, 1 = cropped       this will be used on take picture        //ini akan digunakan saat mengambil kamera
+    private int animHeight;             //height of animation (black one)       //tinggi dari animasi (yg hitam)
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,6 +47,8 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         initData();
         flipButtonClicked();
         flashLightButtonClicked();
+        backButtonClicked();
+        cropButtonClicked();
     }
 
     @Override
@@ -53,6 +66,74 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
     protected void onPause() {
         super.onPause();
         releaseCamera();
+    }
+
+    private void cropButtonClicked()
+    {
+        cropButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                switch(cropValidation)
+                {
+                    case 0:
+                        ValueAnimator anim = ValueAnimator.ofInt(0, animHeight);
+                        anim.setDuration(300);
+                        anim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                            @Override
+                            public void onAnimationUpdate(ValueAnimator animation) {
+                                int currentValue = Integer.parseInt(animation.getAnimatedValue().toString());
+                                RelativeLayout.LayoutParams Params = new RelativeLayout.LayoutParams(widthCamera, currentValue);
+                                topForScallingView.setLayoutParams(Params);
+
+                                RelativeLayout.LayoutParams bottomParams = new RelativeLayout.LayoutParams(widthCamera, currentValue);
+                                bottomParams.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+                                bottomForScallingView.setLayoutParams(bottomParams);
+                            }
+
+                        });
+                        anim.start();
+                        topForScallingView.bringToFront();
+                        bottomForScallingView.bringToFront();
+                        flipImageButton.bringToFront();
+                        flashLightButton.bringToFront();
+                        bottomMenuButtonLayout.bringToFront();
+                        cropValidation++;
+                        break;
+                    case 1:
+                        ValueAnimator animDown = ValueAnimator.ofInt(animHeight,0 );
+                        animDown.setDuration(300);
+                        animDown.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+                            @Override
+                            public void onAnimationUpdate(ValueAnimator animation) {
+                                int currentValue = Integer.parseInt(animation.getAnimatedValue().toString());
+                                RelativeLayout.LayoutParams Params = new RelativeLayout.LayoutParams(widthCamera, currentValue);
+                                topForScallingView.setLayoutParams(Params);
+
+                                RelativeLayout.LayoutParams bottomParams = new RelativeLayout.LayoutParams(widthCamera, currentValue);
+                                bottomParams.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+                                bottomForScallingView.setLayoutParams(bottomParams);
+                            }
+
+                        });
+                        animDown.start();
+                        flipImageButton.bringToFront();
+                        flashLightButton.bringToFront();
+                        cropButton.bringToFront();
+                        cropValidation = 0;
+                        break;
+                }
+            }
+        });
+    }
+
+    private void backButtonClicked()
+    {
+        backButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                finish();
+            }
+        });
     }
 
     private void flashLightButtonClicked()
@@ -137,6 +218,11 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         cameraSurfaceView = (SurfaceView) findViewById(R.id.camera_surface_view);
         flipImageButton = (ImageButton) findViewById(R.id.flip_image_button);
         flashLightButton = (ImageButton) findViewById(R.id.flash_light_button);
+        backButton = (ImageButton) findViewById(R.id.back_button);
+        cropButton = (ImageButton) findViewById(R.id.crop_button);
+        topForScallingView = (View) findViewById(R.id.top_for_scalling_view);
+        bottomForScallingView = (View) findViewById(R.id.bottom_for_scalling_view);
+        bottomMenuButtonLayout = (LinearLayout) findViewById(R.id.bottom_menu_button_layout);
 
         surfaceHolder = cameraSurfaceView.getHolder();
         if (cameraHardware== null) {
@@ -145,6 +231,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         {
             //jika tidak ada kamera
             //if there is no camera
+            Toast.makeText(this,"this device doesn't support Camera",Toast.LENGTH_SHORT).show();
         }
         surfaceHolder.addCallback(this);
         //inisiasi kamera
@@ -156,6 +243,10 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         DisplayMetrics dm = this.getResources().getDisplayMetrics();
         widthCamera = dm.widthPixels;
         heightCamera= dm.heightPixels;
+
+        //tinggi yang warna hitam waktu di klik
+        //height of black things that occurs
+        animHeight = (heightCamera - widthCamera)/2;
     }
 
     private Camera getCamera(int id)
