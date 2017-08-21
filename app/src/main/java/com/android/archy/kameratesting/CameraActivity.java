@@ -2,9 +2,17 @@ package com.android.archy.kameratesting;
 
 import android.animation.ValueAnimator;
 import android.app.Activity;
+import android.content.pm.ActivityInfo;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
 import android.hardware.Camera;
+import android.media.MediaScannerConnection;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.util.DisplayMetrics;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -14,7 +22,11 @@ import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
 import android.widget.Toast;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.List;
 
 //implements SurfaceHolder.callback Harus ada surfaceCreated, surfaceChange, surfaceDestroyed
 //implements SurfaceHolder.callback must have surfaceCreated, surfaceChange, surfaceDestroyed
@@ -26,6 +38,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
     private ImageButton flashLightButton;
     private ImageButton backButton;
     private ImageButton cropButton;
+    private ImageButton takePictureImageButton;
     private View topForScallingView;
     private View bottomForScallingView;
     private LinearLayout bottomMenuButtonLayout;
@@ -38,6 +51,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
     private int flashNumber = 0 ;           //0 = flash off, 1 = flash on, 2 = auto flash
     private int cropValidation =0;          //0 = dont get crop yet, 1 = cropped       this will be used on take picture        //ini akan digunakan saat mengambil kamera
     private int animHeight;             //height of animation (black one)       //tinggi dari animasi (yg hitam)
+    float distance = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,6 +63,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         flashLightButtonClicked();
         backButtonClicked();
         cropButtonClicked();
+        takePictureButtonClicked();
     }
 
     @Override
@@ -66,6 +81,221 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
     protected void onPause() {
         super.onPause();
         releaseCamera();
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        Camera.Parameters parameters = cameraHardware.getParameters();
+        int action = event.getAction();
+
+
+        if(event.getPointerCount()>1)
+        {
+            if(action == MotionEvent.ACTION_POINTER_DOWN)
+            {
+                distance = getFingerSpacing(event);
+            }else if(action == MotionEvent.ACTION_MOVE && parameters.isZoomSupported())
+            {
+                cameraHardware.cancelAutoFocus();
+                handleZoom(event, parameters);
+            }
+        }else
+        {
+            if(action == MotionEvent.ACTION_UP)
+            {
+                handleFocus(event,parameters);
+            }
+        }
+        return true;
+    }
+
+    private void handleFocus(MotionEvent event, final Camera.Parameters parameters)
+    {
+        int pointerId = event.getPointerId(0);
+        int pointerIndex = event.findPointerIndex(pointerId);
+
+        float x = event.getX(pointerIndex);
+        float y = event.getY(pointerIndex);
+
+        List<String> supportFocusModes = parameters.getSupportedFocusModes();
+        if(supportFocusModes != null && supportFocusModes.contains(Camera.Parameters.FOCUS_MODE_AUTO))
+        {
+            cameraHardware.autoFocus(new Camera.AutoFocusCallback() {
+                @Override
+                public void onAutoFocus(boolean success, Camera camera) {
+
+                }
+            });
+        }
+    }
+
+    private float getFingerSpacing(MotionEvent event)
+    {
+        float x = event.getX(0) - event.getX(1);
+        float y = event.getY(0) - event.getY(1);
+        return (float)Math.sqrt(x*x+y*y);
+    }
+
+    private void handleZoom(MotionEvent event,Camera.Parameters parameters)
+    {
+        int maxZoom = parameters.getMaxZoom();
+        int zoom = parameters.getZoom();
+        float newDistance = getFingerSpacing(event);
+        if(newDistance>distance)
+        {
+            if(zoom<maxZoom)
+                zoom+=2;
+        }else if(newDistance<distance)
+        {
+            if(zoom>0)
+                zoom-=2;
+        }
+        distance = newDistance;
+        parameters.setZoom(zoom);
+        cameraHardware.setParameters(parameters);
+    }
+
+    private void takePictureButtonClicked()
+    {
+        takePictureImageButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if(cameraId==0)
+                {flashLightOnOrOff();}
+                captureImage();
+            }
+        });
+    }
+
+    private void captureImage()
+    {
+        //for best quality
+        // FOR API 18++
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            Camera.Parameters parameters = cameraHardware.getParameters();
+            List<Camera.Size> sizes = parameters.getSupportedPictureSizes();
+            Camera.Size size = sizes.get(0);
+            for (int i = 0; i < sizes.size(); i++) {
+                if (sizes.get(i).width > size.width)
+                    size = sizes.get(i);
+            }
+            parameters.setJpegQuality(100);
+            parameters.setPictureSize(size.width, size.height);
+            parameters.setJpegThumbnailQuality(100);
+            parameters.setJpegThumbnailSize(size.width, size.height);
+            cameraHardware.setParameters(parameters);
+        }
+
+        cameraHardware.takePicture(null, null, new Camera.PictureCallback() {
+            @Override
+            public void onPictureTaken(byte[] data, Camera camera) {
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR);
+                Bitmap bitmap = BitmapFactory.decodeByteArray(data,0,data.length);
+                Camera.CameraInfo info = new Camera.CameraInfo();
+                Camera.getCameraInfo(cameraId,info);
+                Matrix matrix = new Matrix();
+                if(cameraId ==1)
+                    matrix.postScale(-1,1);
+
+                if (getWindowManager().getDefaultDisplay().getRotation() == Surface.ROTATION_0) {
+                    matrix.postRotate(90);
+                }
+                if (getWindowManager().getDefaultDisplay().getRotation() == Surface.ROTATION_90) {
+                    matrix.postRotate(0);
+                }
+                if (getWindowManager().getDefaultDisplay().getRotation() == Surface.ROTATION_180) {
+                    matrix.postRotate(270);
+                }
+                if (getWindowManager().getDefaultDisplay().getRotation() == Surface.ROTATION_270) {
+                    matrix.postRotate(180);
+                }
+                bitmap = Bitmap.createBitmap(bitmap, 0, 0,bitmap.getWidth(), bitmap.getHeight(),  matrix, true);
+                bitmap = Bitmap.createScaledBitmap(bitmap,bitmap.getWidth(),bitmap.getHeight(),false);
+                if(cropValidation==1)
+                {
+                    animHeight = (bitmap.getHeight() - bitmap.getWidth())/3;
+                    bitmap = Bitmap.createBitmap(bitmap,0,animHeight,bitmap.getWidth(),bitmap.getWidth());
+                }else
+                {
+                    bitmap = Bitmap.createBitmap(bitmap,0,0,bitmap.getWidth(),bitmap.getHeight());
+                }
+
+                String path = getExternalFilesDir(Environment.DIRECTORY_PICTURES).getPath()+ File.separator+System.currentTimeMillis()+".jpeg";
+
+                File file = new File(path);
+                File tempPath = new File(file.getParent());
+                if (!tempPath.exists()) {
+                    tempPath.mkdirs();
+                }
+                try {
+                    FileOutputStream out = new FileOutputStream(file);
+                    if (bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)) {
+                        out.flush();
+                        out.close();
+                    }
+                    MediaScannerConnection.scanFile(getApplicationContext(), new String[]{path}, null, null);
+                } catch (FileNotFoundException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+
+                if(!bitmap.isRecycled()){
+                    bitmap.recycle();
+                }
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_NOSENSOR);
+                releaseCamera();
+            }
+        });
+
+    }
+
+    private void flashLightOnOrOff()
+    {
+        if (cameraHardware == null) {
+            return;
+        }
+        Camera.Parameters parameters = cameraHardware.getParameters();
+        if (parameters == null) {
+            return;
+        }
+        List<String> flashModes = parameters.getSupportedFlashModes();
+        // Check if camera flash exists
+        if (flashModes == null) {
+            // Use the screen as a flashlight (next best thing)
+            return;
+        }
+        String flashMode = parameters.getFlashMode();
+        switch (flashNumber) {
+
+            case 0:
+                if (Camera.Parameters.FLASH_MODE_ON.equals(flashMode)) {
+                    // Turn on the flash
+                    if (flashModes.contains(Camera.Parameters.FLASH_MODE_TORCH)) {
+                        parameters.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
+                        cameraHardware.setParameters(parameters);
+                    }
+                }
+                    break;
+            case 1:
+                if (Camera.Parameters.FLASH_MODE_AUTO.equals(flashMode)) {
+                    // Turn on the flash
+                    if (flashModes.contains(Camera.Parameters.FLASH_MODE_TORCH)) {
+                        parameters.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
+                        cameraHardware.setParameters(parameters);
+                    }
+                }
+                break;
+            case 2:
+                if (Camera.Parameters.FLASH_MODE_OFF.equals(flashMode)) {
+                    // Turn off the flash
+                    if (flashModes.contains(Camera.Parameters.FLASH_MODE_TORCH)) {
+                        parameters.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
+                        cameraHardware.setParameters(parameters);
+                    }
+                }
+                break;
+        }
     }
 
     private void cropButtonClicked()
@@ -223,6 +453,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         topForScallingView = (View) findViewById(R.id.top_for_scalling_view);
         bottomForScallingView = (View) findViewById(R.id.bottom_for_scalling_view);
         bottomMenuButtonLayout = (LinearLayout) findViewById(R.id.bottom_menu_button_layout);
+        takePictureImageButton = (ImageButton) findViewById(R.id.take_picture_image_button);
 
         surfaceHolder = cameraSurfaceView.getHolder();
         if (cameraHardware== null) {
@@ -242,7 +473,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
     {
         DisplayMetrics dm = this.getResources().getDisplayMetrics();
         widthCamera = dm.widthPixels;
-        heightCamera= dm.heightPixels;
+        heightCamera = dm.heightPixels;
 
         //tinggi yang warna hitam waktu di klik
         //height of black things that occurs
@@ -290,7 +521,6 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
     }
     private void setUpCamera(Camera cameraHardware)
     {
-
         Camera.Parameters parameters = cameraHardware.getParameters();
         //disini kita bisa nambahin autofocus, flip camera,flash, dan sebagainya
         //here you can add feature autofocus, flip camera, or flash or whatever you want
@@ -301,37 +531,9 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
             parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
         }
 
-
-
-        //portrait normal
-        if(getWindowManager().getDefaultDisplay().getRotation() == Surface.ROTATION_0)
-        {
-//            parameters.setPreviewSize(heightCamera, widthCamera);
-            cameraHardware.setDisplayOrientation(90);
-        }
-
-        //Landscape normal
-        if(getWindowManager().getDefaultDisplay().getRotation() == Surface.ROTATION_90)
-        {
-//            parameters.setPreviewSize(widthCamera, heightCamera);
-            cameraHardware.setDisplayOrientation(0);
-        }
-
-        //Landscape terbalik
-        //inverse Landscape
-        if(getWindowManager().getDefaultDisplay().getRotation() == Surface.ROTATION_180)
-        {
-//            parameters.setPreviewSize(heightCamera, widthCamera);
-            cameraHardware.setDisplayOrientation(0);
-        }
-
-        //kalau terbalik portrait
-        //inverse Portrait
-        if(getWindowManager().getDefaultDisplay().getRotation() == Surface.ROTATION_270)
-        {
-//            parameters.setPreviewSize(widthCamera, heightCamera);
-            cameraHardware.setDisplayOrientation(180);
-        }
+        parameters.setPreviewSize(heightCamera,widthCamera);
+//        set default portrait orientation =90
+        cameraHardware.setDisplayOrientation(90);
         cameraHardware.setParameters(parameters);
     }
 }

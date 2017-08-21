@@ -62,6 +62,7 @@
             android:layout_weight="1"/>
 
         <ImageButton
+            android:id="@+id/take_picture_image_button"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
