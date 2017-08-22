@@ -20,6 +20,7 @@ import android.view.View;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
@@ -39,6 +40,8 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
     private ImageButton backButton;
     private ImageButton cropButton;
     private ImageButton takePictureImageButton;
+    private ImageButton timerButton;
+    private TextView delayTimeTextView;
     private View topForScallingView;
     private View bottomForScallingView;
     private LinearLayout bottomMenuButtonLayout;
@@ -52,6 +55,8 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
     private int cropValidation =0;          //0 = dont get crop yet, 1 = cropped       this will be used on take picture        //ini akan digunakan saat mengambil kamera
     private int animHeight;             //height of animation (black one)       //tinggi dari animasi (yg hitam)
     float distance = 0;
+    private int delayTime;
+    private int delayTimeTemp;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -63,6 +68,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         flashLightButtonClicked();
         backButtonClicked();
         cropButtonClicked();
+        delayTimeButtonClicked();
         takePictureButtonClicked();
     }
 
@@ -96,13 +102,16 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
                 distance = getFingerSpacing(event);
             }else if(action == MotionEvent.ACTION_MOVE && parameters.isZoomSupported())
             {
-                cameraHardware.cancelAutoFocus();
+                //AUTO FOCUS WHEN PINCH
+                parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
                 handleZoom(event, parameters);
             }
         }else
         {
             if(action == MotionEvent.ACTION_UP)
             {
+                //AUTOFOCUS WHEN TAP
+                parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
                 handleFocus(event,parameters);
             }
         }
@@ -160,12 +169,47 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         takePictureImageButton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if(cameraId==0)
-                {flashLightOnOrOff();}
-                captureImage();
+
+                if (delayTime == 0) {
+                    if (cameraId == 0) {
+                        flashLightOnOrOff();
+                    }
+                    captureImage();
+                } else {
+                    delayTimeTextView.setVisibility(View.VISIBLE);
+                    delayTimeTextView.setText(String.valueOf(delayTime));
+
+                    Thread t = new Thread() {
+                        @Override
+                        public void run() {
+                            try {
+                                while (delayTime != 0) {
+                                    Thread.sleep(1000);
+                                    runOnUiThread(new Runnable() {
+                                        @Override
+                                        public void run() {
+                                            if(delayTime==0)
+                                            {
+                                                delayTimeTextView.setVisibility(View.GONE);
+                                              captureImage();
+                                            }else {
+                                                delayTime--;
+                                                delayTimeTextView.setText(String.valueOf(delayTime));
+                                            }
+                                        }
+                                    });
+                                }
+                            } catch (InterruptedException e) {
+                            }
+                        }
+                    };
+
+                    t.start();
+                }
             }
         });
     }
+
 
     private void captureImage()
     {
@@ -356,6 +400,33 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         });
     }
 
+    private void delayTimeButtonClicked()
+    {
+        timerButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                switch (delayTime)
+                {
+                    case 0:
+                        delayTime = 3;
+                        delayTimeTemp = delayTime;
+                        timerButton.setImageResource(R.drawable.ic_timer_3_sec);
+                        break;
+                    case 3:
+                        delayTime = 10;
+                        delayTimeTemp = delayTime;
+                        timerButton.setImageResource(R.drawable.ic_timer_10_sec);
+                        break;
+                    case 10:
+                        delayTime = 0;
+                        delayTimeTemp = delayTime;
+                        timerButton.setImageResource(R.drawable.ic_timer_off);
+                        break;
+                }
+            }
+        });
+    }
+
     private void backButtonClicked()
     {
         backButton.setOnClickListener(new View.OnClickListener() {
@@ -454,6 +525,9 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         bottomForScallingView = (View) findViewById(R.id.bottom_for_scalling_view);
         bottomMenuButtonLayout = (LinearLayout) findViewById(R.id.bottom_menu_button_layout);
         takePictureImageButton = (ImageButton) findViewById(R.id.take_picture_image_button);
+        timerButton = (ImageButton) findViewById(R.id.timer_button);
+        delayTimeTextView = (TextView) findViewById(R.id.delay_time_text_view);
+
 
         surfaceHolder = cameraSurfaceView.getHolder();
         if (cameraHardware== null) {
@@ -474,6 +548,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         DisplayMetrics dm = this.getResources().getDisplayMetrics();
         widthCamera = dm.widthPixels;
         heightCamera = dm.heightPixels;
+        delayTime = 0;
 
         //tinggi yang warna hitam waktu di klik
         //height of black things that occurs
