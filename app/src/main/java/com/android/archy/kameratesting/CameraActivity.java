@@ -178,7 +178,8 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
                 } else {
                     delayTimeTextView.setVisibility(View.VISIBLE);
                     delayTimeTextView.setText(String.valueOf(delayTime));
-
+                    //dikarenakan ketika wait tidak bisa mengganti UI maka hrus dilakukan Threading
+                    //causes wait can't change UI, so using threading
                     Thread t = new Thread() {
                         @Override
                         public void run() {
@@ -191,7 +192,7 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
                                             if(delayTime==0)
                                             {
                                                 delayTimeTextView.setVisibility(View.GONE);
-                                              captureImage();
+                                                captureImage();
                                             }else {
                                                 delayTime--;
                                                 delayTimeTextView.setText(String.valueOf(delayTime));
@@ -203,7 +204,6 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
                             }
                         }
                     };
-
                     t.start();
                 }
             }
@@ -257,13 +257,28 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
                 bitmap = Bitmap.createScaledBitmap(bitmap,bitmap.getWidth(),bitmap.getHeight(),false);
                 if(cropValidation==1)
                 {
-                    animHeight = (bitmap.getHeight() - bitmap.getWidth())/3;
-                    bitmap = Bitmap.createBitmap(bitmap,0,animHeight,bitmap.getWidth(),bitmap.getWidth());
+                    int shortestLength;         //because phone is rectangular
+                    int longestLength;          //karna handphone persegi panjang
+                    if(bitmap.getWidth()<bitmap.getHeight())
+                    {
+                        shortestLength = bitmap.getWidth();
+                        longestLength = bitmap.getHeight();
+                        animHeight = (longestLength - shortestLength)/2;
+                        bitmap = Bitmap.createBitmap(bitmap,0,animHeight,shortestLength,shortestLength);
+                    }else
+                    {
+                        shortestLength = bitmap.getHeight();
+                        longestLength = bitmap.getWidth();
+                        animHeight = (longestLength - shortestLength)/2;
+                        bitmap = Bitmap.createBitmap(bitmap,animHeight,0,shortestLength,shortestLength);
+                    }
+
                 }else
                 {
                     bitmap = Bitmap.createBitmap(bitmap,0,0,bitmap.getWidth(),bitmap.getHeight());
                 }
 
+                
                 String path = getExternalFilesDir(Environment.DIRECTORY_PICTURES).getPath()+ File.separator+System.currentTimeMillis()+".jpeg";
 
                 File file = new File(path);
@@ -293,6 +308,8 @@ public class CameraActivity extends Activity implements SurfaceHolder.Callback{
         });
 
     }
+
+
 
     private void flashLightOnOrOff()
     {
